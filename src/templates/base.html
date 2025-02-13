@@ -9,6 +9,12 @@
 <body>
     <header>
         <h1>Backwood Burgers Terminal</h1>
+        <nav class="nav">
+            <ul>
+                <li><a href="{{ url_for('views.home') }}">Home</a></li>
+                <li><a href="{{ url_for('views.current') }}">Current Parties</a></li>
+                <li><a href="{{ url_for('views.reservations') }}">Reservations</a></li>
+            </ul>
     </header>
     <main>
         {% block content %}

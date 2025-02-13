@@ -1,11 +1,14 @@
-from flask import Flask, render_template
+from dotenv import load_dotenv
+load_dotenv()
+
+from flask import Flask
+from views import views
 import os
 
 app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return render_template('index.html')
+# Set secret key from environment variable or use a default for development
+app.secret_key = os.environ.get('SECRET_KEY', 'dev')
+app.register_blueprint(views)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

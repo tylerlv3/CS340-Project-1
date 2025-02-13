@@ -5,3 +5,5 @@ python-dotenv==0.19.1
 gunicorn==21.2.0
 pytest
 werkzeug==2.0.1
+psycopg2
+mysql-connector-python
