@@ -5,7 +5,9 @@ from flask import Flask
 from src.views import views
 import os
 
-app = Flask(__name__)
+app = Flask(__name__,
+            static_folder='src/static',
+            template_folder='src/templates')
 # Set secret key from environment variable or use a default for development
 app.secret_key = os.environ.get('SECRET_KEY', 'dev')
 app.register_blueprint(views)
