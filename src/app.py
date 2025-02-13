@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask
-from views import views
+from src.views import views
 import os
 
 app = Flask(__name__)
