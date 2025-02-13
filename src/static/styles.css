@@ -71,11 +71,14 @@ footer {
     width: auto%;
     border-collapse: collapse;
     border: 1px solid black;
-    border-
 }
 .reservationTable, th, td {
     width: auto%;
     border-collapse: collapse;
     border: 1px solid black;
-    border-
+}
+.tabTable {
+    width: auto%;
+    border-collapse: collapse;
+    border: 1px solid black;
 }

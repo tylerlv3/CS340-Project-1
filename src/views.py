@@ -78,3 +78,26 @@ def reservations():
             cur.close()
         if conn.is_connected():
             conn.close()
+
+@views.route('/tabs')
+def tabs():
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return render_template('tabs.html', tabs=None)
+    try:
+        cur = conn.cursor(dictionary=True)
+        query = """
+            SELECT * FROM tabs;
+        """
+        cur.execute(query)
+        tabs = cur.fetchall()
+        return render_template('tabs.html', tabs=tabs)
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+        return render_template('tabs.html', tabs=None)
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn.is_connected():
+            conn.close()
