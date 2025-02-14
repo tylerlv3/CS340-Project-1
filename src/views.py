@@ -2,9 +2,12 @@ from flask import Blueprint, render_template, flash
 import mysql.connector
 from mysql.connector import Error
 import os
+from dotenv import load_dotenv
 
 # Create Blueprint
 views = Blueprint('views', __name__)
+
+load_dotenv()
 
 host=os.getenv('DB_HOST', 'localhost'),
 port=os.getenv('DB_PORT', 3306),
@@ -42,7 +45,7 @@ def current():
         query = """
             SELECT st.*, s.name AS server_name
             FROM serversTables st
-            JOIN servers s ON st.serverID = s.employeeID;
+            JOIN servers s ON st.employeeID = s.employeeID;
         """
         cur.execute(query)
         parties = cur.fetchall()
@@ -96,6 +99,29 @@ def tabs():
     except Error as e:
         flash(f'Database error: {str(e)}', 'error')
         return render_template('tabs.html', tabs=None)
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn.is_connected():
+            conn.close()
+
+@views.route('/tables')
+def tables():
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return render_template('tables.html', tables=None)
+    try:
+        cur = conn.cursor(dictionary=True)
+        query = """
+            SELECT * FROM tables;
+        """
+        cur.execute(query)
+        tabs = cur.fetchall()
+        return render_template('tables.html', tables=tables)
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+        return render_template('tables.html', tables=None)
     finally:
         if 'cur' in locals():
             cur.close()
