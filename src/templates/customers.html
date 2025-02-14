@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Backwood Burgers Management | Current Customers</title>
+</head>
+<body>
+    {% extends 'base.html' %}
+
+    {% block content %}
+    <div class="container">
+        <h2>Current customers</h2>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-error">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if customers %}
+            <table class="tabTable">
+                <thead>
+                    <tr>
+                        {% for key in customers[0].keys() %}
+                            <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in customers %}
+                        <tr>
+                            {% for value in customer.values() %}
+                                <td>{{ value }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No customers currently available</p>
+        {% endif %}
+    </div>
+    {% endblock %}
+</body>
+</html>

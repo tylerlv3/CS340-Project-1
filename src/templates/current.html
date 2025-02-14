@@ -40,6 +40,34 @@
                     {% endfor %}
                 </tbody>
             </table>
+        <div class="form-container">    
+            <h2>Seat a New Party</h2>
+        <form action="{{ url_for('views.current') }}" method="POST">
+            <label for="employee">Employee (Server):</label>
+            <select name="employeeID" id="employee" required>
+                {% for employee in employees %}
+                    <option value="{{ employee.employeeID }}">{{ employee.name }}</option>
+                {% endfor %}
+            </select>
+            
+            <label for="table">Table:</label>
+            <select name="tableID" id="table" required>
+                {% for table in tables %}
+                    <option value="{{ table.tableID }}">{{ table.tableID }}</option>
+                {% endfor %}
+            </select>
+            
+            <label for="customer">Customer (Optional):</label>
+            <select name="customerID" id="customer">
+                <option value="">-- None --</option>
+                {% for customer in customers %}
+                    <option value="{{ customer.customerID }}">{{ customer.name }}</option>
+                {% endfor %}
+            </select>
+            
+            <button type="submit">Seat Guest</button>
+        </form>
+        </div>
         {% else %}
             <p>No parties currently available</p>
         {% endif %}
