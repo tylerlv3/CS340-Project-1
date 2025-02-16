@@ -22,20 +22,37 @@
         {% endwith %}
 
         {% if parties %}
+            {% set column_order = ['server_name', 'tableID', 'dateTime', 'status'] %}
             <table class="currentTable">
                 <thead>
                     <tr>
-                        {% for key in parties[0].keys() %}
-                            <th>{{ key }}</th>
+                        {% for col in column_order %}
+                            <th>{{ col }}</th>
                         {% endfor %}
+                        <th>Update</th>
+                        <th>Delete</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for party in parties %}
                         <tr>
-                            {% for value in party.values() %}
-                                <td>{{ value }}</td>
+                            {% for col in column_order %}
+                                <td>{{ party[col] }}</td>
                             {% endfor %}
+                            <td>
+                                <form action="{{ url_for('views.update_status', row_id=party.currentID) }}" method="POST" class="d-inline">
+                                    <select name="new_status" class="form-select form-select-sm d-inline w-auto">
+                                        <option value="open" {% if party.status == 'open' %}selected{% endif %}>Open</option>
+                                        <option value="closed" {% if party.status == 'closed' %}selected{% endif %}>Closed</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                                </form>
+                            </td>
+                            <td>
+                                <form action="{{ url_for('views.delete_party', row_id=party.currentID) }}" method="POST" class="d-inline" style="padding: 10px 10px;">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>

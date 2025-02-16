@@ -240,3 +240,99 @@ def add_guest():
         return redirect(url_for('views.home'))
     
     return render_template('add_guest.html')
+
+@views.route('/update_status/<int:row_id>', methods=['POST'])
+def update_status(row_id):
+    new_status = request.form.get('new_status')
+    if new_status not in ['open', 'closed']:
+        flash('Invalid status value.', 'error')
+        return redirect(url_for('views.current'))
+        
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.current'))
+    try:
+        cur = conn.cursor()
+        update_query = "UPDATE serversTables SET status = %s WHERE currentID = %s;"
+        cur.execute(update_query, (new_status, row_id))
+        conn.commit()
+        flash('Status updated successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.current'))
+
+@views.route('/delete_party/<int:row_id>', methods=['POST'])
+def delete_party(row_id):
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.current'))
+    try:
+        cur = conn.cursor()
+        delete_query = "DELETE FROM serversTables WHERE currentID = %s;"
+        cur.execute(delete_query, (row_id,))
+        conn.commit()
+        flash('Party deleted successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.current'))
+
+@views.route('/newEmployee', methods=['GET', 'POST'])
+def newEmployee():
+    if request.method == 'POST':
+        name = request.form.get('employee')
+        conn = get_db_connection()
+        if conn is None:
+            flash('Database connection failed', 'error')
+            return redirect(url_for('views.newEmployee'))
+        try:
+            cur = conn.cursor()
+            insert_query = """
+                INSERT INTO servers (name)
+                VALUES (%s);
+            """
+            cur.execute(insert_query, (name,))
+            conn.commit()
+            flash('New employee added successfully!', 'success')
+        except Error as e:
+            flash(f'Database error: {str(e)}', 'error')
+        finally:
+            if 'cur' in locals():
+                cur.close()
+            if conn and conn.is_connected():
+                conn.close()
+        return redirect(url_for('views.employees'))
+
+    return render_template('newEmployee.html')
+
+@views.route('/fireEmployee/<int:row_id>', methods=['POST'])
+def fireEmployee(employee_id):
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.employees'))
+    try:
+        cur = conn.cursor()
+        delete_query = "DELETE FROM servers WHERE employeeID = %s;"
+        cur.execute(delete_query, (employee_id,))
+        conn.commit()
+        flash('Employee deleted successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.employees'))

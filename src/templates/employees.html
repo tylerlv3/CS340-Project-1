@@ -11,7 +11,7 @@
 
     {% block content %}
     <div class="container">
-        <h2>Current employees</h2>
+        <h2>Current Employees</h2>
         
         {% with messages = get_flashed_messages() %}
             {% if messages %}
@@ -22,24 +22,33 @@
         {% endwith %}
 
         {% if employees %}
-            <table class="tabTable">
+            <table class="tabTable table table-striped">
                 <thead>
                     <tr>
-                        {% for key in employees[0].keys() %}
-                            <th>{{ key }}</th>
-                        {% endfor %}
+                        <th>Employee ID</th>
+                        <th>Name</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for employee in employees %}
                         <tr>
-                            {% for value in employee.values() %}
-                                <td>{{ value }}</td>
-                            {% endfor %}
+                            <td>{{ employee.employeeID }}</td>
+                            <td>{{ employee.name }}</td>
+                            <td>
+                                <form action="{{ url_for('views.fireEmployee', row_id=employee.employeeID) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-danger btn-sm">FIRE!</button>
+                                </form>
+                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            <form action="{{ url_for('views.newEmployee') }}" method="POST" class="form-container">
+                <label for="employee">Employee Name:</label>
+                <input name="employee" type="text" id="employee" required>
+                <button type="submit">Hire New Employee</button>
+            </form>
         {% else %}
             <p>No employees currently available</p>
         {% endif %}
