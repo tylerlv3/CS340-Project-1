@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Backwood Burgers Management | Current tables</title>
+    <title>Backwood Burgers Management | Current Tables</title>
 </head>
 <body>
     {% extends 'base.html' %}
-
     {% block content %}
     <div class="container">
-        <h2>Current tables</h2>
+        <h2>Current Tables</h2>
         
         {% with messages = get_flashed_messages() %}
             {% if messages %}
@@ -22,12 +21,14 @@
         {% endwith %}
 
         {% if tables %}
-            <table class="tabTable">
+            <table class="tabTable table table-striped">
                 <thead>
                     <tr>
                         {% for key in tables[0].keys() %}
                             <th>{{ key }}</th>
                         {% endfor %}
+                        <th>Update</th>
+                        <th>Delete</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -36,6 +37,20 @@
                             {% for value in table.values() %}
                                 <td>{{ value }}</td>
                             {% endfor %}
+                            <td>
+                                <form action="{{ url_for('views.updateTable', table_id=table.tableID) }}" method="POST" class="d-inline">
+                                    <select name="new_status" class="form-select form-select-sm d-inline w-auto">
+                                        <option value="avail" {% if table.status == 'avail' %}selected{% endif %}>Available</option>
+                                        <option value="taken" {% if table.status == 'taken' %}selected{% endif %}>Taken</option>
+                                    </select>
+                                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                                </form>
+                            </td>
+                            <td>
+                                <form action="{{ url_for('views.deleteTable', table_id=table.tableID) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -43,6 +58,11 @@
         {% else %}
             <p>No tables currently available</p>
         {% endif %}
+        <form action="{{ url_for('views.newTable') }}" method="POST" class="form-container">
+            <label for="table">Table Capacity:</label>
+            <input name="table" type="text" id="table" required>
+            <button type="submit">Add New Table</button>
+        </form>
     </div>
     {% endblock %}
 </body>

@@ -68,7 +68,7 @@ def current():
         # Query pre-existing data for the form
         cur.execute("SELECT employeeID, name FROM servers;")
         employees = cur.fetchall()
-        cur.execute("SELECT tableID FROM tables;")
+        cur.execute("SELECT tableID FROM tables WHERE status = 'avail';")
         tables = cur.fetchall()
         cur.execute("SELECT customerID, name FROM customers;")
         customers = cur.fetchall()
@@ -106,29 +106,6 @@ def reservations():
     except Error as e:
         flash(f'Database error: {str(e)}', 'error')
         return render_template('reservations.html', parties=None)
-    finally:
-        if 'cur' in locals():
-            cur.close()
-        if conn.is_connected():
-            conn.close()
-
-@views.route('/tabs')
-def tabs():
-    conn = get_db_connection()
-    if conn is None:
-        flash('Database connection failed', 'error')
-        return render_template('tabs.html', tabs=None)
-    try:
-        cur = conn.cursor(dictionary=True)
-        query = """
-            SELECT * FROM tabs;
-        """
-        cur.execute(query)
-        tabs = cur.fetchall()
-        return render_template('tabs.html', tabs=tabs)
-    except Error as e:
-        flash(f'Database error: {str(e)}', 'error')
-        return render_template('tabs.html', tabs=None)
     finally:
         if 'cur' in locals():
             cur.close()
@@ -336,3 +313,129 @@ def fireEmployee(employee_id):
         if conn and conn.is_connected():
             conn.close()
     return redirect(url_for('views.employees'))
+
+@views.route('/newTable', methods=['GET', 'POST'])
+def newTable():
+    if request.method == 'POST':
+        capacity = request.form.get('table')
+        conn = get_db_connection()
+        if conn is None:
+            flash('Database connection failed', 'error')
+            return redirect(url_for('views.newTable'))
+        try:
+            cur = conn.cursor()
+            insert_query = """
+                INSERT INTO tables (seatsAvail)
+                VALUES (%s);
+            """
+            cur.execute(insert_query, (capacity,))
+            conn.commit()
+            flash('New table added successfully!', 'success')
+        except Error as e:
+            flash(f'Database error: {str(e)}', 'error')
+        finally:
+            if 'cur' in locals():
+                cur.close()
+            if conn and conn.is_connected():
+                conn.close()
+        return redirect(url_for('views.tables'))
+
+    return render_template('newTable.html')
+
+@views.route('/updateTable/<int:table_id>', methods=['POST'])
+def updateTable(table_id):
+    # Retrieve any updated info from request.form, e.g.
+    # new_capacity = request.form.get('new_capacity')
+    status = request.form.get('new_status')
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.tables'))
+    try:
+        cur = conn.cursor()
+        update_query = "UPDATE tables SET status = %s WHERE tableID = %s;"
+        # Use new_capacity or any other updated field
+        cur.execute(update_query, (status, table_id))
+        conn.commit()
+        flash('Table updated successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.tables'))
+
+@views.route('/deleteTable/<int:table_id>', methods=['POST'])
+def deleteTable(table_id):
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.tables'))
+    try:
+        cur = conn.cursor()
+        delete_query = "DELETE FROM tables WHERE tableID = %s;"
+        cur.execute(delete_query, (table_id,))
+        conn.commit()
+        flash('Table deleted successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.tables'))
+
+@views.route('/tabs', methods=['GET', 'POST'])
+def tabs():
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return render_template('tabs.html', tabs=None, tables=[])
+    try:
+        cur = conn.cursor(dictionary=True)
+        cur.execute("SELECT * FROM tabs;")
+        tabs = cur.fetchall()
+        # Get tables for the dropdown; you'll need to get all tables (or filter in SQL)
+        cur.execute("SELECT tableID, status FROM tables;")
+        tables = cur.fetchall()
+        return render_template('tabs.html', tabs=tabs, tables=tables)
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+        return render_template('tabs.html', tabs=None, tables=[])
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+
+@views.route('/newTab', methods=['GET', 'POST'])
+def newTab():
+    if request.method == 'POST':
+        table_id = request.form.get('tableID')
+        total = request.form.get('total')
+        conn = get_db_connection()
+        if conn is None:
+            flash('Database connection failed', 'error')
+            return redirect(url_for('views.newTab'))
+        try:
+            cur = conn.cursor()
+            insert_query = """
+                INSERT INTO tabs (tableID, total)
+                VALUES (%s, %s);
+            """
+            cur.execute(insert_query, (table_id, total))
+            conn.commit()
+            flash('New tab created successfully!', 'success')
+        except Error as e:
+            flash(f'Database error: {str(e)}', 'error')
+        finally:
+            if 'cur' in locals():
+                cur.close()
+            if conn and conn.is_connected():
+                conn.close()
+        return redirect(url_for('views.tabs'))
+
+    return render_template('newTab.html')

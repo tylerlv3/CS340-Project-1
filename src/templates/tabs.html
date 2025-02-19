@@ -8,7 +8,6 @@
 </head>
 <body>
     {% extends 'base.html' %}
-
     {% block content %}
     <div class="container">
         <h2>Current Tabs</h2>
@@ -20,9 +19,11 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
-
+        
+        <!-- Form to open a new tab -->
+        
         {% if tabs %}
-            <table class="tabTable">
+            <table class="tabTable table table-striped">
                 <thead>
                     <tr>
                         {% for key in tabs[0].keys() %}
@@ -43,6 +44,24 @@
         {% else %}
             <p>No tabs currently available</p>
         {% endif %}
+        <h3>Open New Tab</h3>
+        <form action="{{ url_for('views.newTab') }}" method="POST" class="form-container mb-4">
+            <div class="mb-3">
+                <label for="total" class="form-label">Total</label>
+                <input type="number" step="0.01" name="total" id="total" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label for="tableID" class="form-label">Table</label>
+                <select name="tableID" id="tableID" class="form-select" required>
+                    {% for table in tables %}
+                        {% if table.status == 'taken' %}
+                            <option value="{{ table.tableID }}">Table {{ table.tableID }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Open New Tab</button>
+        </form>
     </div>
     {% endblock %}
 </body>

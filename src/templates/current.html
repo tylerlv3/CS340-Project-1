@@ -57,6 +57,11 @@
                     {% endfor %}
                 </tbody>
             </table>
+        
+        </div>
+        {% else %}
+            <p>No parties currently available</p>
+        {% endif %}
         <div class="form-container">    
             <h2>Seat a New Party</h2>
         <form action="{{ url_for('views.current') }}" method="POST">
@@ -84,10 +89,6 @@
             
             <button type="submit">Seat Guest</button>
         </form>
-        </div>
-        {% else %}
-            <p>No parties currently available</p>
-        {% endif %}
     </div>
     {% endblock %}
 </body>
