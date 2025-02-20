@@ -24,10 +24,9 @@
             <table class="tabTable table table-striped">
                 <thead>
                     <tr>
-                        {% for key in tables[0].keys() %}
-                            <th>{{ key }}</th>
-                        {% endfor %}
-                    
+                       <th>Table ID</th>
+                        <th>Seating Capacity</th>
+                        <th>Status</th>
                         <th>Delete</th>
                     </tr>
                 </thead>
@@ -51,7 +50,7 @@
             <p>No tables currently available</p>
         {% endif %}
         <form action="{{ url_for('views.newTable') }}" method="POST" class="form-container">
-            <label for="table">Table Capacity:</label>
+            <label for="table">Seating Capacity:</label>
             <input name="table" type="text" id="table" required>
             <button type="submit">Add New Table</button>
         </form>

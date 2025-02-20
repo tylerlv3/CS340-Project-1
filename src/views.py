@@ -39,66 +39,44 @@ def current():
     conn = get_db_connection()
     if conn is None:
         flash('Database connection failed', 'error')
-        return render_template('current.html', parties=None)
+        return render_template('current.html', tables=[], all_servers=[])
     try:
         cur = conn.cursor(dictionary=True)
-        if request.method == 'POST':
-            # Retrieve form values from drop-down menus
-            employee_id = request.form.get('employeeID')
-            table_id = request.form.get('tableID')
-            # Customer is optional. If not chosen an empty string is sent.
-            customer_id = request.form.get('customerID') or None
-            conn = get_db_connection()
-            if conn is None:
-                flash('Database connection failed', 'error')
-                return redirect(url_for('views.current'))
-            try:
-                cur = conn.cursor(dictionary=True)
-                # Insert new party with status 'open'
-                insert_query = """
-                    INSERT INTO serversTables (employeeID, tableID, status)
-                    VALUES (%s, %s, %s);
-                """
-                cur.execute(insert_query, (employee_id, table_id, 'open'))
-                # Update the table status to 'taken' because a new party is opening
-                cur.execute("UPDATE tables SET status = 'taken' WHERE tableID = %s;", (table_id,))
-                conn.commit()
-                flash('New guest has been seated and table updated to taken!', 'success')
-            except Error as e:
-                flash(f'Database error: {str(e)}', 'error')
-            finally:
-                if 'cur' in locals():
-                    cur.close()
-                if conn and conn.is_connected():
-                    conn.close()
-            return redirect(url_for('views.current'))
-        
-        # GET - Fetch existing seating data
-        query = """
-            SELECT st.*, s.name AS server_name
+        # Get all tables
+        cur.execute("SELECT * FROM tables;")
+        tables = cur.fetchall()
+
+        # Get all servers
+        cur.execute("SELECT * FROM servers;")
+        all_servers = cur.fetchall()
+
+        # Build a dictionary mapping tableID -> list of servers assigned
+        # serversTables: tableID, employeeID
+        # employees: employeeID, name
+        table_assignments = {}
+        for t in tables:
+            table_assignments[t['tableID']] = []
+
+        cur.execute("""
+            SELECT st.tableID, s.employeeID, s.name
             FROM serversTables st
             JOIN servers s ON st.employeeID = s.employeeID;
-        """
-        cur.execute(query)
-        parties = cur.fetchall()
-        # Query pre-existing data for the form
-        cur.execute("SELECT employeeID, name FROM servers;")
-        employees = cur.fetchall()
-        cur.execute("SELECT tableID FROM tables WHERE status = 'avail';")
-        tables = cur.fetchall()
-        cur.execute("SELECT customerID, name FROM customers;")
-        customers = cur.fetchall()
+        """)
+        assignments = cur.fetchall()
+        for row in assignments:
+            table_assignments[row['tableID']].append({
+                'employeeID': row['employeeID'],
+                'name': row['name']
+            })
 
-        return render_template(
-            'current.html', 
-            parties=parties, 
-            employees=employees, 
-            tables=tables, 
-            customers=customers
-        )
+        # Attach the assigned_servers list to each table dict
+        for t in tables:
+            t['assigned_servers'] = table_assignments[t['tableID']]
+
+        return render_template('current.html', tables=tables, all_servers=all_servers)
     except Error as e:
         flash(f'Database error: {str(e)}', 'error')
-        return render_template('current.html', parties=None)
+        return render_template('current.html', tables=[], all_servers=[])
     finally:
         if 'cur' in locals():
             cur.close()
@@ -184,7 +162,7 @@ def employees():
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 
@@ -208,7 +186,7 @@ def customers():
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn.is_connected():
+        if conn and conn.is_connected():
             conn.close()
 
 @views.route('/add_guest', methods=['GET', 'POST'])
@@ -565,3 +543,83 @@ def newReservation():
         return redirect(url_for('views.reservations'))
 
     return render_template('newReservation.html')
+
+@views.route('/addServerToTable/<int:table_id>', methods=['POST'])
+def addServerToTable(table_id):
+    server_id = request.form.get('serverID')
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.current'))
+    try:
+        cur = conn.cursor()
+        # Attempt to insert a new row
+        cur.execute("""
+            INSERT INTO serversTables (employeeID, tableID, status)
+            VALUES (%s, %s, 'open');
+        """, (server_id, table_id))
+        conn.commit()
+        flash('Server added to table successfully!', 'success')
+    except Error as e:
+        # 1062 is the MySQL error code for duplicate entry
+        if e.errno == 1062:
+            flash('That server is already assigned to this table!', 'error')
+        else:
+            flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.current'))
+
+@views.route('/removeServerFromTable/<int:table_id>', methods=['POST'])
+def removeServerFromTable(table_id):
+    server_id = request.form.get('serverID')
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.current'))
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM serversTables WHERE employeeID = %s AND tableID = %s;", (server_id, table_id))
+        conn.commit()
+        flash('Server removed from table.', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.current'))
+
+@views.route('/toggleTableStatus/<int:table_id>', methods=['POST'])
+def toggleTableStatus(table_id):
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.current'))
+    try:
+        # Create cursor with dictionary=True
+        cur = conn.cursor(dictionary=True)
+        
+        # First get current status
+        cur.execute("SELECT status FROM tables WHERE tableID = %s", (table_id,))
+        current_status = cur.fetchone()['status']
+        
+        # Toggle the status
+        new_status = 'taken' if current_status == 'avail' else 'avail'
+        
+        # Update the status
+        cur.execute("UPDATE tables SET status = %s WHERE tableID = %s", (new_status, table_id))
+        conn.commit()
+        flash(f'Table {table_id} status updated to {new_status}!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'danger')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('views.current'))

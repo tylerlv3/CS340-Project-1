@@ -1,98 +1,86 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Backwood Burgers Management | Current Parties</title>
-</head>
-<body>
-    {% extends 'base.html' %}
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+    <h2>Current Table Assignments</h2>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{% if category == 'error' %}danger{% else %}{{ category }}{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
 
-    {% block content %}
-    <div class="container">
-        <h2>Current Parties</h2>
-        
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-error">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        {% if parties %}
-            {% set column_order = ['server_name', 'tableID', 'dateTime', 'status'] %}
-            <table class="currentTable">
-                <thead>
-                    <tr>
-                        {% for col in column_order %}
-                            <th>{{ col }}</th>
-                        {% endfor %}
-                        <th>Update</th>
-                        <th>Delete</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for party in parties %}
-                        <tr>
-                            {% for col in column_order %}
-                                <td>{{ party[col] }}</td>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Table ID (Seating Capacity)</th>
+                <th>Servers Assigned</th>
+                <th>Add Server(s)</th>
+                <th>Table Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for table in tables %}
+            <tr>
+                <td class="fw-bold fs-5 text-primary">
+                    <span class="badge bg-primary text-white p-2">
+                        Table {{ table.tableID }}
+                    </span>
+                    <span class="ms-2 text-muted fs-6">
+                        ({{ table.seatsAvail }} seats)
+                    </span>
+                </td>
+                <td>
+                    {% if table.assigned_servers %}
+                        <div class="list-group">
+                            {% for ser in table.assigned_servers %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>{{ ser.name }}</span>
+                                    <form action="{{ url_for('views.removeServerFromTable', table_id=table.tableID) }}" method="POST">
+                                        <input type="hidden" name="serverID" value="{{ ser.employeeID }}">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-trash"></i> Remove
+                                        </button>
+                                    </form>
+                                </div>
                             {% endfor %}
-                            <td>
-                                <form action="{{ url_for('views.update_status', row_id=party.currentID) }}" method="POST" class="d-inline">
-                                    <select name="new_status" class="form-select form-select-sm d-inline w-auto">
-                                        <option value="open" {% if party.status == 'open' %}selected{% endif %}>Open</option>
-                                        <option value="closed" {% if party.status == 'closed' %}selected{% endif %}>Closed</option>
-                                    </select>
-                                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
-                                </form>
-                            </td>
-                            <td>
-                                <form action="{{ url_for('views.delete_party', row_id=party.currentID) }}" method="POST" class="d-inline" style="padding: 10px 10px;">
-                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                                </form>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        
-        </div>
-        {% else %}
-            <p>No parties currently available</p>
-        {% endif %}
-        <div class="form-container">    
-            <h2>Seat a New Party</h2>
-        <form action="{{ url_for('views.current') }}" method="POST">
-            <label for="employee">Employee (Server):</label>
-            <select name="employeeID" id="employee" required>
-                {% for employee in employees %}
-                    <option value="{{ employee.employeeID }}">{{ employee.name }}</option>
-                {% endfor %}
-            </select>
-            
-            <label for="table">Table:</label>
-                <select name="tableID" id="table" required>
-                        {% for table in tables %}
-                            <option value="{{ table.tableID }}">{{ table.tableID }}</option>
-                        {% endfor %}
-                </select>
-          
-            <label for="customer">Customer (Optional):</label>
-            <select name="customerID" id="customer">
-                <option value="">-- None --</option>
-                {% for customer in customers %}
-                    <option value="{{ customer.customerID }}">{{ customer.name }}</option>
-                {% endfor %}
-            </select>
-            
-            <button type="submit">Seat Guest</button>
-            {% if not tables %}
-            <p style="color:red">ALL TABLES CURRENTLY FILLED, PARTIES MUST BE CLOSED BEFORE MORE CAN BE SEATED OR MORE TABLES MUST BE ADDED</p>
-        {% endif %}
-        </form>
-    </div>
-    {% endblock %}
-</body>
-</html>
+                        </div>
+                    {% else %}
+                        <span class="text-muted fst-italic">No servers assigned</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <!-- Form for adding a server to this table -->
+                    <form action="{{ url_for('views.addServerToTable', table_id=table.tableID) }}" method="POST" class="d-inline">
+                        <select name="serverID" class="form-select form-select-sm d-inline w-auto">
+                            {% for server in all_servers %}
+                                <option value="{{ server.employeeID }}">{{ server.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-primary btn-sm">Add</button>
+                    </form>
+                </td>
+                <td>
+                    <form action="{{ url_for('views.toggleTableStatus', table_id=table.tableID) }}" method="POST" class="d-inline">
+                        {% if table.status == 'avail' %}
+                            <button type="submit" class="btn btn-success">
+                                Available 
+                                <span class="badge bg-light text-dark ms-1">Click to Mark Occupied</span>
+                            </button>
+                        {% else %}
+                            <button type="submit" class="btn btn-danger">
+                                Occupied
+                                <span class="badge bg-light text-dark ms-1">Click to Mark Available</span>
+                            </button>
+                        {% endif %}
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
