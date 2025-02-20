@@ -27,7 +27,7 @@
                         {% for key in tables[0].keys() %}
                             <th>{{ key }}</th>
                         {% endfor %}
-                        <th>Update</th>
+                    
                         <th>Delete</th>
                     </tr>
                 </thead>
@@ -37,15 +37,7 @@
                             {% for value in table.values() %}
                                 <td>{{ value }}</td>
                             {% endfor %}
-                            <td>
-                                <form action="{{ url_for('views.updateTable', table_id=table.tableID) }}" method="POST" class="d-inline">
-                                    <select name="new_status" class="form-select form-select-sm d-inline w-auto">
-                                        <option value="avail" {% if table.status == 'avail' %}selected{% endif %}>Available</option>
-                                        <option value="taken" {% if table.status == 'taken' %}selected{% endif %}>Taken</option>
-                                    </select>
-                                    <button type="submit" class="btn btn-primary btn-sm">Update</button>
-                                </form>
-                            </td>
+                        
                             <td>
                                 <form action="{{ url_for('views.deleteTable', table_id=table.tableID) }}" method="POST" class="d-inline">
                                     <button type="submit" class="btn btn-danger btn-sm">Delete</button>

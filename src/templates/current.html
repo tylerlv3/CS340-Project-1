@@ -73,12 +73,12 @@
             </select>
             
             <label for="table">Table:</label>
-            <select name="tableID" id="table" required>
-                {% for table in tables %}
-                    <option value="{{ table.tableID }}">{{ table.tableID }}</option>
-                {% endfor %}
-            </select>
-            
+                <select name="tableID" id="table" required>
+                        {% for table in tables %}
+                            <option value="{{ table.tableID }}">{{ table.tableID }}</option>
+                        {% endfor %}
+                </select>
+          
             <label for="customer">Customer (Optional):</label>
             <select name="customerID" id="customer">
                 <option value="">-- None --</option>
@@ -88,6 +88,9 @@
             </select>
             
             <button type="submit">Seat Guest</button>
+            {% if not tables %}
+            <p style="color:red">ALL TABLES CURRENTLY FILLED, PARTIES MUST BE CLOSED BEFORE MORE CAN BE SEATED OR MORE TABLES MUST BE ADDED</p>
+        {% endif %}
         </form>
     </div>
     {% endblock %}

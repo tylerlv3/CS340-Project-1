@@ -48,13 +48,29 @@ def current():
             table_id = request.form.get('tableID')
             # Customer is optional. If not chosen an empty string is sent.
             customer_id = request.form.get('customerID') or None
-            insert_query = """
-                INSERT INTO serversTables (employeeID, tableID, status)
-                VALUES (%s, %s, %s);
-            """
-            cur.execute(insert_query, (employee_id, table_id, 'open')) #add customer back here if we decide to have serverTables accept that
-            conn.commit()
-            flash('New guest has been seated.', 'success')
+            conn = get_db_connection()
+            if conn is None:
+                flash('Database connection failed', 'error')
+                return redirect(url_for('views.current'))
+            try:
+                cur = conn.cursor(dictionary=True)
+                # Insert new party with status 'open'
+                insert_query = """
+                    INSERT INTO serversTables (employeeID, tableID, status)
+                    VALUES (%s, %s, %s);
+                """
+                cur.execute(insert_query, (employee_id, table_id, 'open'))
+                # Update the table status to 'taken' because a new party is opening
+                cur.execute("UPDATE tables SET status = 'taken' WHERE tableID = %s;", (table_id,))
+                conn.commit()
+                flash('New guest has been seated and table updated to taken!', 'success')
+            except Error as e:
+                flash(f'Database error: {str(e)}', 'error')
+            finally:
+                if 'cur' in locals():
+                    cur.close()
+                if conn and conn.is_connected():
+                    conn.close()
             return redirect(url_for('views.current'))
         
         # GET - Fetch existing seating data
@@ -102,7 +118,20 @@ def reservations():
         """
         cur.execute(query)
         reservations = cur.fetchall()
-        return render_template('reservations.html', reservations=reservations)
+        # Query pre-existing data for the form
+        cur.execute("SELECT employeeID, name FROM servers;")
+        employees = cur.fetchall()
+        cur.execute("SELECT tableID FROM tables WHERE status = 'avail';")
+        tables = cur.fetchall()
+        cur.execute("SELECT customerID, name FROM customers;")
+        customers = cur.fetchall()
+        return render_template(
+            'reservations.html', 
+            reservations=reservations, 
+            employees=employees, 
+            tables=tables, 
+            customers=customers
+        )
     except Error as e:
         flash(f'Database error: {str(e)}', 'error')
         return render_template('reservations.html', parties=None)
@@ -224,15 +253,33 @@ def update_status(row_id):
     if new_status not in ['open', 'closed']:
         flash('Invalid status value.', 'error')
         return redirect(url_for('views.current'))
-        
+    
     conn = get_db_connection()
     if conn is None:
         flash('Database connection failed', 'error')
         return redirect(url_for('views.current'))
+    
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(dictionary=True)
+        # Get the current party row to know its tableID
+        cur.execute("SELECT tableID FROM serversTables WHERE currentID = %s;", (row_id,))
+        party = cur.fetchone()
+        if party is None:
+            flash('Party not found.', 'error')
+            return redirect(url_for('views.current'))
+        
+        table_id = party['tableID']
+
+        # Update the party's status
         update_query = "UPDATE serversTables SET status = %s WHERE currentID = %s;"
         cur.execute(update_query, (new_status, row_id))
+        
+        # Determine new table status based on party status
+        # If the party is opened => table becomes 'taken'
+        # If the party is closed => table becomes 'avail'
+        table_status = 'taken' if new_status == 'open' else 'avail'
+        cur.execute("UPDATE tables SET status = %s WHERE tableID = %s;", (table_status, table_id))
+        
         conn.commit()
         flash('Status updated successfully!', 'success')
     except Error as e:
@@ -251,11 +298,22 @@ def delete_party(row_id):
         flash('Database connection failed', 'error')
         return redirect(url_for('views.current'))
     try:
-        cur = conn.cursor()
-        delete_query = "DELETE FROM serversTables WHERE currentID = %s;"
-        cur.execute(delete_query, (row_id,))
+        cur = conn.cursor(dictionary=True)
+        # Get the party to retrieve the tableID
+        cur.execute("SELECT tableID FROM serversTables WHERE currentID = %s;", (row_id,))
+        party = cur.fetchone()
+        if party is None:
+            flash('Party not found.', 'error')
+            return redirect(url_for('views.current'))
+        table_id = party['tableID']
+        
+        # Delete the party
+        cur.execute("DELETE FROM serversTables WHERE currentID = %s;", (row_id,))
+        # Set the table status back to available
+        cur.execute("UPDATE tables SET status = 'avail' WHERE tableID = %s;", (table_id,))
+        
         conn.commit()
-        flash('Party deleted successfully!', 'success')
+        flash('Party deleted and table status set to available!', 'success')
     except Error as e:
         flash(f'Database error: {str(e)}', 'error')
     finally:
@@ -294,7 +352,7 @@ def newEmployee():
     return render_template('newEmployee.html')
 
 @views.route('/fireEmployee/<int:row_id>', methods=['POST'])
-def fireEmployee(employee_id):
+def fireEmployee(row_id):
     conn = get_db_connection()
     if conn is None:
         flash('Database connection failed', 'error')
@@ -302,7 +360,7 @@ def fireEmployee(employee_id):
     try:
         cur = conn.cursor()
         delete_query = "DELETE FROM servers WHERE employeeID = %s;"
-        cur.execute(delete_query, (employee_id,))
+        cur.execute(delete_query, (row_id,))
         conn.commit()
         flash('Employee deleted successfully!', 'success')
     except Error as e:
@@ -439,3 +497,71 @@ def newTab():
         return redirect(url_for('views.tabs'))
 
     return render_template('newTab.html')
+
+@views.route('/newCustomer', methods=['GET', 'POST'])
+def newCustomer():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('customerEmail')
+        phone = request.form.get('customerPhone')
+        if not name or not email or not phone:
+            flash('All fields are required', 'error')
+            return redirect(url_for('views.newCustomer'))
+        conn = get_db_connection()
+        if conn is None:
+            flash('Database connection failed', 'error')
+            return redirect(url_for('views.newCustomer'))
+        try:
+            cur = conn.cursor()
+            insert_query = """
+                INSERT INTO customers (name, customerEmail, customerPhone)
+                VALUES (%s, %s, %s);
+            """
+            cur.execute(insert_query, (name, email, phone))
+            conn.commit()
+            flash('New customer added successfully!', 'success')
+        except Error as e:
+            flash(f'Database error: {str(e)}', 'error')
+        finally:
+            if 'cur' in locals():
+                cur.close()
+            if conn and conn.is_connected():
+                conn.close()
+        return redirect(url_for('views.customers'))
+
+    return render_template('newCustomer.html')
+
+@views.route('/newReservation', methods=['GET', 'POST'])
+def newReservation():
+    if request.method == 'POST':
+        customer_id = request.form.get('customerID')
+        employee_id = request.form.get('employeeID')
+        table_id = request.form.get('tableID')
+        dateTime = request.form.get('resDateTime')
+        status = request.form.get('status')
+        if not customer_id or not employee_id or not table_id or not dateTime or not status:
+            flash('All fields are required', 'error')
+            return redirect(url_for('views.newReservation'))
+        conn = get_db_connection()
+        if conn is None:
+            flash('Database connection failed', 'error')
+            return redirect(url_for('views.newReservation'))
+        try:
+            cur = conn.cursor()
+            insert_query = """
+                INSERT INTO reservations (customerID, employeeID, tableID, reservationDateTime, status)
+                VALUES (%s, %s, %s, %s, %s);
+            """
+            cur.execute(insert_query, (customer_id, employee_id, table_id, dateTime, status))
+            conn.commit()
+            flash('New reservation added successfully!', 'success')
+        except Error as e:
+            flash(f'Database error: {str(e)}', 'error')
+        finally:
+            if 'cur' in locals():
+                cur.close()
+            if conn and conn.is_connected():
+                conn.close()
+        return redirect(url_for('views.reservations'))
+
+    return render_template('newReservation.html')

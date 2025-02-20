@@ -43,6 +43,21 @@
         {% else %}
             <p>No customers currently available</p>
         {% endif %}
+        <div class="form-container">
+            <h3>Add New Customer</h3>
+            <form action="{{ url_for('views.newCustomer') }}" method="POST">
+                <div class="mb-3">
+                    <label for="name" class="form-label">Customer Name:</label>
+                    <input type="text" name="name" id="customerName" class="form-control" required>
+                    <label for="customerEmail" class="form-label">Customer Email:</label>
+                    <input type="email" name="customerEmail" id="customerEmail" class="form-control" required>
+                    <label for="customerPhone" class="form-label">Customer Phone:</label>
+                    <input type="tel" name="customerPhone" id="customerPhone" class="form-control" required>
+                </div>
+                <!-- You can add more fields here if needed, e.g., phone, email, etc. -->
+                <button type="submit">Add Customer</button>
+            </form>
+        </div>
     </div>
     {% endblock %}
 </body>
