@@ -482,7 +482,7 @@ def newCustomer():
         name = request.form.get('name')
         email = request.form.get('customerEmail')
         phone = request.form.get('customerPhone')
-        if not name or not email or not phone:
+        if not name or not phone:
             flash('All fields are required', 'error')
             return redirect(url_for('views.newCustomer'))
         conn = get_db_connection()
