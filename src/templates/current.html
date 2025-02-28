@@ -17,6 +17,7 @@
         <thead>
             <tr>
                 <th>Table ID (Seating Capacity)</th>
+                <th>Most Recent Server</th>
                 <th>Servers Assigned</th>
                 <th>Add Server(s)</th>
                 <th>Table Status</th>
@@ -32,6 +33,16 @@
                     <span class="ms-2 text-muted fs-6">
                         ({{ table.seatsAvail }} seats)
                     </span>
+                </td>
+                <td>
+                    {% if table.recent_server_name %}
+                        <div class="d-flex align-items-center">
+                            <span class="fw-medium">{{ table.recent_server_name }}</span>
+                            <span class="badge bg-secondary ms-2">{{ table.assignment_time }}</span>
+                        </div>
+                    {% else %}
+                        <span class="text-muted fst-italic">No recent assignments</span>
+                    {% endif %}
                 </td>
                 <td>
                     {% if table.assigned_servers %}

@@ -42,10 +42,28 @@ def current():
         return render_template('current.html', tables=[], all_servers=[])
     try:
         cur = conn.cursor(dictionary=True)
-        # Get all tables
-        cur.execute("SELECT * FROM tables;")
+        # Get all tables with their most recent server assignment
+        cur.execute("""
+            SELECT t.*, 
+                   s.name as recent_server_name,
+                   st.employeeID as recent_server_id,
+                   st.dateTime as assignment_time
+            FROM tables t
+            LEFT JOIN (
+                SELECT tableID, employeeID, dateTime
+                FROM serversTables
+                WHERE (tableID, dateTime) IN (
+                    SELECT tableID, MAX(dateTime) as max_time
+                    FROM serversTables
+                    GROUP BY tableID
+                )
+            ) st ON t.tableID = st.tableID
+            LEFT JOIN servers s ON st.employeeID = s.employeeID
+            ORDER BY t.tableID;
+        """)
         tables = cur.fetchall()
-
+        
+        # Continue with rest of your existing code to get assigned_servers and all_servers
         # Get all servers
         cur.execute("SELECT * FROM servers;")
         all_servers = cur.fetchall()
