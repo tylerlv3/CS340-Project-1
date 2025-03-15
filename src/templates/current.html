@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container">
-    <h2>Current Table Assignments</h2>
+    <h2>Current Parties</h2>
     
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -64,15 +64,17 @@
                     {% endif %}
                 </td>
                 <td>
-                    <!-- Form for adding a server to this table -->
-                    <form action="{{ url_for('views.addServerToTable', table_id=table.tableID) }}" method="POST" class="d-inline">
-                        <select name="serverID" class="form-select form-select-sm d-inline w-auto">
-                            {% for server in all_servers %}
-                                <option value="{{ server.employeeID }}">{{ server.name }}</option>
-                            {% endfor %}
-                        </select>
-                        <button type="submit" class="btn btn-primary btn-sm">Add</button>
-                    </form>
+                    <div class="d-flex align-items-center">
+                        <form action="{{ url_for('views.addServerToTable', table_id=table.tableID) }}" method="post" class="d-flex">
+                            <select name="serverID" class="form-select form-select-sm me-2">
+                                <option value="" selected disabled>Select Server</option>
+                                {% for server in all_servers %}
+                                    <option value="{{ server.employeeID }}">{{ server.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-sm btn-primary">Add</button>
+                        </form>
+                    </div>
                 </td>
                 <td>
                     <form action="{{ url_for('views.toggleTableStatus', table_id=table.tableID) }}" method="POST" class="d-inline">

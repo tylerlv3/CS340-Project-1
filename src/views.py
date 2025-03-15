@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, flash, request, redirect, url_for
 import mysql.connector
 from mysql.connector import Error
+from mysql.connector.pooling import MySQLConnectionPool
 import os
 from dotenv import load_dotenv
 
@@ -9,26 +10,45 @@ views = Blueprint('views', __name__)
 
 load_dotenv()
 
-host=os.getenv('DB_HOST', 'localhost'),
-port=os.getenv('DB_PORT', 3306),
-database=os.getenv('DB_NAME'),
-user=os.getenv('DB_USER'),
-password=os.getenv('DB_PASSWORD')
-print(host, port, database, user, password)
+# Global connection pool
+dbconfig = {
+    "host": os.getenv('DB_HOST', 'localhost'),
+    "database": os.getenv('DB_NAME'),
+    "user": os.getenv('DB_USER'),
+    "password": os.getenv('DB_PASSWORD')
+}
+
+# Initialize connection pool (create this once, not for each request)
+try:
+    connection_pool = MySQLConnectionPool(pool_name="mypool",
+                                         pool_size=5,
+                                         **dbconfig)
+    print("Connection pool created successfully")
+except Error as e:
+    print(f"Error creating connection pool: {e}")
+    connection_pool = None
 
 def get_db_connection():
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv('DB_HOST', 'localhost'),
-            database=os.getenv('DB_NAME'),
-            user=os.getenv('DB_USER'),
-            password=os.getenv('DB_PASSWORD')
-        )
-
-        return conn
+        if connection_pool:
+            # Get connection from pool
+            conn = connection_pool.get_connection()
+            return conn
+        else:
+            # Fallback to direct connection if pool creation failed
+            conn = mysql.connector.connect(**dbconfig)
+            return conn
     except Error as e:
         print(f"Error connecting to MySQL Database: {e}")
         return None
+
+# Helper function to safely close connections from the pool
+def close_connection(conn):
+    if conn:
+        try:
+            conn.close()
+        except Error as e:
+            print(f"Error closing connection: {e}")
 
 @views.route('/')
 def home():
@@ -42,7 +62,7 @@ def current():
         return render_template('current.html', tables=[], all_servers=[])
     try:
         cur = conn.cursor(dictionary=True)
-        # Get all tables with their most recent server assignment
+        # Optimized query with proper indexing - recommend adding indexes on tableID columns
         cur.execute("""
             SELECT t.*, 
                    s.name as recent_server_name,
@@ -50,42 +70,43 @@ def current():
                    st.dateTime as assignment_time
             FROM tables t
             LEFT JOIN (
-                SELECT tableID, employeeID, dateTime
-                FROM serversTables
-                WHERE (tableID, dateTime) IN (
+                SELECT st1.tableID, st1.employeeID, st1.dateTime
+                FROM serversTables st1
+                INNER JOIN (
                     SELECT tableID, MAX(dateTime) as max_time
                     FROM serversTables
                     GROUP BY tableID
-                )
+                ) st2 ON st1.tableID = st2.tableID AND st1.dateTime = st2.max_time
             ) st ON t.tableID = st.tableID
             LEFT JOIN servers s ON st.employeeID = s.employeeID
             ORDER BY t.tableID;
         """)
         tables = cur.fetchall()
         
-        # Continue with rest of your existing code to get assigned_servers and all_servers
-        # Get all servers
+        # Get all servers in a single query for better performance
         cur.execute("SELECT * FROM servers;")
         all_servers = cur.fetchall()
 
-        # Build a dictionary mapping tableID -> list of servers assigned
-        # serversTables: tableID, employeeID
-        # employees: employeeID, name
-        table_assignments = {}
-        for t in tables:
-            table_assignments[t['tableID']] = []
-
+        # Optimize this with a single JOIN query instead of multiple queries
         cur.execute("""
             SELECT st.tableID, s.employeeID, s.name
             FROM serversTables st
-            JOIN servers s ON st.employeeID = s.employeeID;
+            JOIN servers s ON st.employeeID = s.employeeID
+            ORDER BY st.tableID;
         """)
+        
+        # Build assignment dictionary
         assignments = cur.fetchall()
+        table_assignments = {}
+        for t in tables:
+            table_assignments[t['tableID']] = []
+            
         for row in assignments:
-            table_assignments[row['tableID']].append({
-                'employeeID': row['employeeID'],
-                'name': row['name']
-            })
+            if row['tableID'] in table_assignments:
+                table_assignments[row['tableID']].append({
+                    'employeeID': row['employeeID'],
+                    'name': row['name']
+                })
 
         # Attach the assigned_servers list to each table dict
         for t in tables:
@@ -98,29 +119,48 @@ def current():
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
 
 @views.route('/reservations')
 def reservations():
     conn = get_db_connection()
     if conn is None:
         flash('Database connection failed', 'error')
-        return render_template('reservations.html', parties=None)
+        return render_template('reservations.html', reservations=None, employees=None, tables=None, customers=None)
     try:
         cur = conn.cursor(dictionary=True)
-        query = """
-            SELECT r.*, s.name as server_name, c.name as customer_name FROM reservations r JOIN servers s ON r.employeeID = s.employeeID JOIN customers c ON r.customerID = c.customerID;
-        """
-        cur.execute(query)
+        
+        # Fetch reservations data
+        cur.execute("""
+            SELECT r.*, s.name as server_name, c.name as customer_name 
+            FROM reservations r 
+            JOIN servers s ON r.employeeID = s.employeeID 
+            JOIN customers c ON r.customerID = c.customerID
+            ORDER BY r.reservationDateTime;
+        """)
         reservations = cur.fetchall()
-        # Query pre-existing data for the form
-        cur.execute("SELECT employeeID, name FROM servers;")
-        employees = cur.fetchall()
-        cur.execute("SELECT tableID FROM tables WHERE status = 'avail';")
-        tables = cur.fetchall()
-        cur.execute("SELECT customerID, name FROM customers;")
-        customers = cur.fetchall()
+        
+        # Create separate cursors for additional queries to avoid "Commands out of sync" error
+        cur.close()
+        
+        # Fetch employees
+        cur2 = conn.cursor(dictionary=True)
+        cur2.execute("SELECT employeeID, name FROM servers ORDER BY name;")
+        employees = cur2.fetchall()
+        cur2.close()
+        
+        # Fetch tables
+        cur3 = conn.cursor(dictionary=True)
+        cur3.execute("SELECT tableID FROM tables ORDER BY tableID;")
+        tables = cur3.fetchall()
+        cur3.close()
+        
+        # Fetch customers
+        cur4 = conn.cursor(dictionary=True)
+        cur4.execute("SELECT customerID, name FROM customers ORDER BY name;")
+        customers = cur4.fetchall()
+        cur4.close()
+        
         return render_template(
             'reservations.html', 
             reservations=reservations, 
@@ -130,12 +170,9 @@ def reservations():
         )
     except Error as e:
         flash(f'Database error: {str(e)}', 'error')
-        return render_template('reservations.html', parties=None)
+        return render_template('reservations.html', reservations=None, employees=None, tables=None, customers=None)
     finally:
-        if 'cur' in locals():
-            cur.close()
-        if conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
 
 @views.route('/tables')
 def tables():
@@ -157,8 +194,7 @@ def tables():
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
 
 @views.route('/employees')
 def employees():
@@ -180,9 +216,7 @@ def employees():
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
-
+        close_connection(conn)  # Use our safe closing function
 
 @views.route('/customers')
 def customers():
@@ -204,8 +238,7 @@ def customers():
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
 
 @views.route('/add_guest', methods=['GET', 'POST'])
 def add_guest():
@@ -237,8 +270,7 @@ def add_guest():
         finally:
             if 'cur' in locals():
                 cur.close()
-            if conn.is_connected():
-                conn.close()
+            close_connection(conn)  # Use our safe closing function
         return redirect(url_for('views.home'))
     
     return render_template('add_guest.html')
@@ -283,8 +315,7 @@ def update_status(row_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.current'))
 
 @views.route('/delete_party/<int:row_id>', methods=['POST'])
@@ -315,8 +346,7 @@ def delete_party(row_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.current'))
 
 @views.route('/newEmployee', methods=['GET', 'POST'])
@@ -341,8 +371,7 @@ def newEmployee():
         finally:
             if 'cur' in locals():
                 cur.close()
-            if conn and conn.is_connected():
-                conn.close()
+            close_connection(conn)  # Use our safe closing function
         return redirect(url_for('views.employees'))
 
     return render_template('newEmployee.html')
@@ -364,8 +393,7 @@ def fireEmployee(row_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.employees'))
 
 @views.route('/newTable', methods=['GET', 'POST'])
@@ -390,8 +418,7 @@ def newTable():
         finally:
             if 'cur' in locals():
                 cur.close()
-            if conn and conn.is_connected():
-                conn.close()
+            close_connection(conn)  # Use our safe closing function
         return redirect(url_for('views.tables'))
 
     return render_template('newTable.html')
@@ -417,8 +444,7 @@ def updateTable(table_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.tables'))
 
 @views.route('/deleteTable/<int:table_id>', methods=['POST'])
@@ -438,8 +464,7 @@ def deleteTable(table_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.tables'))
 
 @views.route('/tabs', methods=['GET', 'POST'])
@@ -462,18 +487,29 @@ def tabs():
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
 
 @views.route('/newTab', methods=['GET', 'POST'])
 def newTab():
     if request.method == 'POST':
         table_id = request.form.get('tableID')
         total = request.form.get('total')
+        
+        # Validate total before connecting to database
+        try:
+            totalValue = float(total)
+            if totalValue < 0:
+                flash('Total cannot be negative', 'error')
+                return redirect(url_for('views.tabs'))
+        except ValueError:
+            flash('Invalid total value', 'error')
+            return redirect(url_for('views.tabs'))
+        
         conn = get_db_connection()
         if conn is None:
             flash('Database connection failed', 'error')
-            return redirect(url_for('views.newTab'))
+            return redirect(url_for('views.tabs'))
+            
         try:
             cur = conn.cursor()
             insert_query = """
@@ -488,11 +524,71 @@ def newTab():
         finally:
             if 'cur' in locals():
                 cur.close()
-            if conn and conn.is_connected():
-                conn.close()
+            close_connection(conn)  # Use our safe closing function
         return redirect(url_for('views.tabs'))
 
     return render_template('newTab.html')
+
+@views.route('/updateTab/<int:tab_id>', methods=['POST'])
+def updateTab(tab_id):
+    total = request.form.get('total')
+    
+    # Validate total before connecting to database
+    try:
+        totalValue = float(total)
+        if totalValue < 0:
+            flash('Total cannot be negative', 'error')
+            return redirect(url_for('views.tabs'))
+    except ValueError:
+        flash('Invalid total value', 'error')
+        return redirect(url_for('views.tabs'))
+    
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.tabs'))
+        
+    try:
+        cur = conn.cursor()
+        update_query = """
+            UPDATE tabs 
+            SET total = %s
+            WHERE tabID = %s;
+        """
+        cur.execute(update_query, (total, tab_id))
+        conn.commit()
+        flash('Tab updated successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        close_connection(conn)  # Use our safe closing function
+    return redirect(url_for('views.tabs'))
+
+@views.route('/deleteTab/<int:tab_id>', methods=['POST'])
+def deleteTab(tab_id):
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.tabs'))
+        
+    try:
+        cur = conn.cursor()
+        delete_query = """
+            DELETE FROM tabs 
+            WHERE tabID = %s;
+        """
+        cur.execute(delete_query, (tab_id,))
+        conn.commit()
+        flash('Tab deleted successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        close_connection(conn)  # Use our safe closing function
+    return redirect(url_for('views.tabs'))
 
 @views.route('/newCustomer', methods=['GET', 'POST'])
 def newCustomer():
@@ -521,11 +617,30 @@ def newCustomer():
         finally:
             if 'cur' in locals():
                 cur.close()
-            if conn and conn.is_connected():
-                conn.close()
+            close_connection(conn)  # Use our safe closing function
         return redirect(url_for('views.customers'))
 
     return render_template('newCustomer.html')
+
+@views.route('/deleteCustomer/<int:customer_id>', methods=['POST'])
+def deleteCustomer(customer_id):
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.customers'))
+    try:
+        cur = conn.cursor()
+        delete_query = "DELETE FROM customers WHERE customerID = %s;"
+        cur.execute(delete_query, (customer_id,))
+        conn.commit()
+        flash('Customer deleted successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        close_connection(conn)  # Use our safe closing function
+    return redirect(url_for('views.customers'))
 
 @views.route('/newReservation', methods=['GET', 'POST'])
 def newReservation():
@@ -535,15 +650,32 @@ def newReservation():
         table_id = request.form.get('tableID')
         dateTime = request.form.get('resDateTime')
         status = request.form.get('status')
+        
         if not customer_id or not employee_id or not table_id or not dateTime or not status:
             flash('All fields are required', 'error')
             return redirect(url_for('views.newReservation'))
+            
         conn = get_db_connection()
         if conn is None:
             flash('Database connection failed', 'error')
             return redirect(url_for('views.newReservation'))
+            
         try:
-            cur = conn.cursor()
+            cur = conn.cursor(dictionary=True)
+            
+            # Check for existing reservations at the same time and table
+            check_query = """
+                SELECT COUNT(*) as count FROM reservations 
+                WHERE tableID = %s AND reservationDateTime = %s
+            """
+            cur.execute(check_query, (table_id, dateTime))
+            result = cur.fetchone()
+            
+            if result['count'] > 0:
+                flash('A reservation already exists for this table at the selected time', 'error')
+                return redirect(url_for('views.newReservation'))
+                
+            # If no conflict, proceed with insertion
             insert_query = """
                 INSERT INTO reservations (customerID, employeeID, tableID, reservationDateTime, status)
                 VALUES (%s, %s, %s, %s, %s);
@@ -556,11 +688,30 @@ def newReservation():
         finally:
             if 'cur' in locals():
                 cur.close()
-            if conn and conn.is_connected():
-                conn.close()
+            close_connection(conn)  # Use our safe closing function
         return redirect(url_for('views.reservations'))
 
     return render_template('newReservation.html')
+
+@views.route('/deleteReservation/<int:reservation_id>', methods=['POST'])
+def deleteReservation(reservation_id):
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.reservations'))
+    try:
+        cur = conn.cursor()
+        delete_query = "DELETE FROM reservations WHERE reservationID = %s;"
+        cur.execute(delete_query, (reservation_id,))
+        conn.commit()
+        flash('Reservation deleted successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        close_connection(conn)  # Use our safe closing function
+    return redirect(url_for('views.reservations'))
 
 @views.route('/addServerToTable/<int:table_id>', methods=['POST'])
 def addServerToTable(table_id):
@@ -587,8 +738,7 @@ def addServerToTable(table_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.current'))
 
 @views.route('/removeServerFromTable/<int:table_id>', methods=['POST'])
@@ -608,8 +758,7 @@ def removeServerFromTable(table_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.current'))
 
 @views.route('/toggleTableStatus/<int:table_id>', methods=['POST'])
@@ -638,6 +787,5 @@ def toggleTableStatus(table_id):
     finally:
         if 'cur' in locals():
             cur.close()
-        if conn and conn.is_connected():
-            conn.close()
+        close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.current'))
