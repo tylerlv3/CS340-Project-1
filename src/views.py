@@ -130,9 +130,9 @@ def reservations():
     try:
         cur = conn.cursor(dictionary=True)
         
-        # Fetch reservations data
+        # Update the query to include customer email
         cur.execute("""
-            SELECT r.*, s.name as server_name, c.name as customer_name 
+            SELECT r.*, s.name as server_name, c.name as customer_name, c.customerEmail as customer_email
             FROM reservations r 
             JOIN servers s ON r.employeeID = s.employeeID 
             JOIN customers c ON r.customerID = c.customerID
@@ -789,3 +789,66 @@ def toggleTableStatus(table_id):
             cur.close()
         close_connection(conn)  # Use our safe closing function
     return redirect(url_for('views.current'))
+
+@views.route('/updateEmployee/<int:employee_id>', methods=['POST'])
+def updateEmployee(employee_id):
+    name = request.form.get('name')
+    
+    if not name:
+        flash('Employee name cannot be empty', 'error')
+        return redirect(url_for('views.employees'))
+        
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.employees'))
+    try:
+        cur = conn.cursor()
+        update_query = """
+            UPDATE servers 
+            SET name = %s
+            WHERE employeeID = %s;
+        """
+        cur.execute(update_query, (name, employee_id))
+        conn.commit()
+        flash('Employee updated successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        close_connection(conn) 
+    return redirect(url_for('views.employees'))
+
+@views.route('/updateCustomer/<int:customer_id>', methods=['POST'])
+def updateCustomer(customer_id):
+    email = request.form.get('customerEmail')
+
+
+    # Note: we allow email to be empty/null
+    
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection failed', 'error')
+        return redirect(url_for('views.customers'))
+    try:
+        cur = conn.cursor()
+        # Use NULL for empty email strings
+        if email == '':
+            email = None
+            
+        update_query = """
+            UPDATE customers 
+            customerEmail = %s
+            WHERE customerID = %s;
+        """
+        cur.execute(update_query, ( email, customer_id))
+        conn.commit()
+        flash('Customer updated successfully!', 'success')
+    except Error as e:
+        flash(f'Database error: {str(e)}', 'error')
+    finally:
+        if 'cur' in locals():
+            cur.close()
+        close_connection(conn) 
+    return redirect(url_for('views.customers'))

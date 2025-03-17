@@ -36,9 +36,17 @@
                             <td>{{ employee.employeeID }}</td>
                             <td>{{ employee.name }}</td>
                             <td>
+                                <div style="display:flex; gap:10px;" class="d-flex ms-3">
+                                    <form action="{{ url_for('views.updateEmployee', employee_id=employee.employeeID) }}" method="post" class="d-inline">
+                                        <div class="input-group input-group-sm " style="width: 250px;">
+                                            <input type="text" class="form-control" name="name" value="{{ employee.name }}" required>
+                                            <button type="submit" class="btn btn-primary btn-sm">Update</button>
+                                        </div>
+                                    </form>
                                 <form action="{{ url_for('views.fireEmployee', row_id=employee.employeeID) }}" method="POST" class="d-inline">
                                     <button type="submit" class="btn btn-danger btn-sm">FIRE!</button>
                                 </form>
+                                </div>
                             </td>
                         </tr>
                     {% endfor %}
